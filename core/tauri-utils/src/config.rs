@@ -1,4 +1,4 @@
-// Copyright 2019-2021 Tauri Programme within The Commons Conservancy
+// Copyright 2019-2022 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
@@ -671,7 +671,7 @@ pub struct CliArg {
   pub required: bool,
   /// Sets an arg that override this arg's required setting
   /// i.e. this arg will be required unless this other argument is present.
-  #[serde(alias = "requred-unless-present")]
+  #[serde(alias = "required-unless-present")]
   pub required_unless_present: Option<String>,
   /// Sets args that override this arg's required setting
   /// i.e. this arg will be required unless all these other arguments are present.
@@ -1204,6 +1204,9 @@ pub struct FsAllowlistConfig {
   /// Rename file from local filesystem.
   #[serde(default, alias = "rename-file")]
   pub rename_file: bool,
+  /// Check if path exists on the local filesystem.
+  #[serde(default)]
+  pub exists: bool,
 }
 
 impl Allowlist for FsAllowlistConfig {
@@ -1219,6 +1222,7 @@ impl Allowlist for FsAllowlistConfig {
       remove_dir: true,
       remove_file: true,
       rename_file: true,
+      exists: true,
     };
     let mut features = allowlist.to_features();
     features.push("fs-all");
@@ -1238,6 +1242,7 @@ impl Allowlist for FsAllowlistConfig {
       check_feature!(self, features, remove_dir, "fs-remove-dir");
       check_feature!(self, features, remove_file, "fs-remove-file");
       check_feature!(self, features, rename_file, "fs-rename-file");
+      check_feature!(self, features, exists, "fs-exists");
       features
     }
   }
@@ -1317,6 +1322,18 @@ pub struct WindowAllowlistConfig {
   /// Allows setting the skip_taskbar flag of the window.
   #[serde(default, alias = "set-skip-taskbar")]
   pub set_skip_taskbar: bool,
+  /// Allows grabbing the cursor.
+  #[serde(default, alias = "set-cursor-grab")]
+  pub set_cursor_grab: bool,
+  /// Allows setting the cursor visibility.
+  #[serde(default, alias = "set-cursor-visible")]
+  pub set_cursor_visible: bool,
+  /// Allows changing the cursor icon.
+  #[serde(default, alias = "set-cursor-icon")]
+  pub set_cursor_icon: bool,
+  /// Allows setting the cursor position.
+  #[serde(default, alias = "set-cursor-position")]
+  pub set_cursor_position: bool,
   /// Allows start dragging on the window.
   #[serde(default, alias = "start-dragging")]
   pub start_dragging: bool,
@@ -1351,6 +1368,10 @@ impl Allowlist for WindowAllowlistConfig {
       set_focus: true,
       set_icon: true,
       set_skip_taskbar: true,
+      set_cursor_grab: true,
+      set_cursor_visible: true,
+      set_cursor_icon: true,
+      set_cursor_position: true,
       start_dragging: true,
       print: true,
     };
@@ -1396,6 +1417,20 @@ impl Allowlist for WindowAllowlistConfig {
       check_feature!(self, features, set_focus, "window-set-focus");
       check_feature!(self, features, set_icon, "window-set-icon");
       check_feature!(self, features, set_skip_taskbar, "window-set-skip-taskbar");
+      check_feature!(self, features, set_cursor_grab, "window-set-cursor-grab");
+      check_feature!(
+        self,
+        features,
+        set_cursor_visible,
+        "window-set-cursor-visible"
+      );
+      check_feature!(self, features, set_cursor_icon, "window-set-cursor-icon");
+      check_feature!(
+        self,
+        features,
+        set_cursor_position,
+        "window-set-cursor-position"
+      );
       check_feature!(self, features, start_dragging, "window-start-dragging");
       check_feature!(self, features, print, "window-print");
       features
@@ -2329,9 +2364,7 @@ impl Default for UpdaterConfig {
 #[cfg_attr(feature = "schema", derive(JsonSchema))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemTrayConfig {
-  /// Path to the icon to use on the system tray.
-  ///
-  /// It is forced to be a `.png` file on Linux and macOS, and a `.ico` file on Windows.
+  /// Path to the default icon to use on the system tray.
   #[serde(alias = "icon-path")]
   pub icon_path: PathBuf,
   /// A Boolean value that determines whether the image represents a [template](https://developer.apple.com/documentation/appkit/nsimage/1520017-template?language=objc) image on macOS.
@@ -2396,11 +2429,11 @@ pub enum BeforeDevCommand {
   },
 }
 
-/// Describes the shell command to run before `tauri build`.
+/// Describes a shell command to be executed when a CLI hook is triggered.
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "schema", derive(JsonSchema))]
 #[serde(rename_all = "camelCase", untagged)]
-pub enum BeforeBuildCommand {
+pub enum HookCommand {
   /// Run the given script with the default options.
   Script(String),
   /// Run the given script with custom options.
@@ -2451,7 +2484,12 @@ pub struct BuildConfig {
   ///
   /// The TAURI_PLATFORM, TAURI_ARCH, TAURI_FAMILY, TAURI_PLATFORM_VERSION, TAURI_PLATFORM_TYPE and TAURI_DEBUG environment variables are set if you perform conditional compilation.
   #[serde(alias = "before-build-command")]
-  pub before_build_command: Option<BeforeBuildCommand>,
+  pub before_build_command: Option<HookCommand>,
+  /// A shell command to run before the bundling phase in `tauri build` kicks in.
+  ///
+  /// The TAURI_PLATFORM, TAURI_ARCH, TAURI_FAMILY, TAURI_PLATFORM_VERSION, TAURI_PLATFORM_TYPE and TAURI_DEBUG environment variables are set if you perform conditional compilation.
+  #[serde(alias = "before-bundle-command")]
+  pub before_bundle_command: Option<HookCommand>,
   /// Features passed to `cargo` commands.
   pub features: Option<Vec<String>>,
   /// Whether we should inject the Tauri API on `window.__TAURI__` or not.
@@ -2467,6 +2505,7 @@ impl Default for BuildConfig {
       dist_dir: default_dist_dir(),
       before_dev_command: None,
       before_build_command: None,
+      before_bundle_command: None,
       features: None,
       with_global_tauri: false,
     }
@@ -2547,7 +2586,7 @@ pub struct PackageConfig {
   /// App name.
   #[serde(alias = "product-name")]
   pub product_name: Option<String>,
-  /// App version. It is a semver version number or a path to a `package.json` file contaning the `version` field.
+  /// App version. It is a semver version number or a path to a `package.json` file containing the `version` field.
   #[serde(deserialize_with = "version_deserializer", default)]
   pub version: Option<String>,
 }
@@ -2679,6 +2718,7 @@ fn default_build() -> BuildConfig {
     dist_dir: default_dist_dir(),
     before_dev_command: None,
     before_build_command: None,
+    before_bundle_command: None,
     features: None,
     with_global_tauri: false,
   }
@@ -3146,6 +3186,7 @@ mod build {
       let runner = quote!(None);
       let before_dev_command = quote!(None);
       let before_build_command = quote!(None);
+      let before_bundle_command = quote!(None);
       let features = quote!(None);
 
       literal_struct!(
@@ -3157,6 +3198,7 @@ mod build {
         with_global_tauri,
         before_dev_command,
         before_build_command,
+        before_bundle_command,
         features
       );
     }
@@ -3557,6 +3599,7 @@ mod test {
       dist_dir: AppUrl::Url(WindowUrl::App("../dist".into())),
       before_dev_command: None,
       before_build_command: None,
+      before_bundle_command: None,
       features: None,
       with_global_tauri: false,
     };
