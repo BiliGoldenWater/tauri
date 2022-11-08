@@ -2161,7 +2161,6 @@ pub enum PatternKind {
   /// Brownfield pattern.
   Brownfield,
   /// Isolation pattern. Recommended for security purposes.
-  #[cfg(feature = "isolation")]
   Isolation {
     /// The dir containing the index.html file that contains the secure isolation application.
     dir: PathBuf,
@@ -2239,7 +2238,6 @@ impl TauriConfig {
     if self.macos_private_api {
       features.push("macos-private-api");
     }
-    #[cfg(feature = "isolation")]
     if let PatternKind::Isolation { .. } = self.pattern {
       features.push("isolation");
     }
@@ -2983,7 +2981,7 @@ mod build {
 
       tokens.append_all(match self {
         Self::App(path) => {
-          let path = path_buf_lit(&path);
+          let path = path_buf_lit(path);
           quote! { #prefix::App(#path) }
         }
         Self::External(url) => {
@@ -3186,6 +3184,8 @@ mod build {
 
       tokens.append_all(match self {
         Self::Brownfield => quote! { #prefix::Brownfield },
+        #[cfg(not(feature = "isolation"))]
+        Self::Isolation { dir: _ } => quote! { #prefix::Brownfield },
         #[cfg(feature = "isolation")]
         Self::Isolation { dir } => {
           let dir = path_buf_lit(dir);
@@ -3211,7 +3211,7 @@ mod build {
           quote! { #prefix::OfflineInstaller { silent: #silent } }
         }
         Self::FixedRuntime { path } => {
-          let path = path_buf_lit(&path);
+          let path = path_buf_lit(path);
           quote! { #prefix::FixedRuntime { path: #path } }
         }
       })
